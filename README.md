@@ -1,54 +1,70 @@
 # ESA — Bee Behavior Analysis
 
-R scripts analyzing bee foraging behavior across 15 urban orchard/garden sites in the St. Louis area (2022–2024). Presented at ESA (Entomological Society of America), part of a USDA-funded ecology project.
+## About
+
+R scripts from a USDA-funded urban ecology project, analyzing how bees behave on flowers at 15 community orchards and gardens around St. Louis from 2022 to 2024. The central question: **does a bee's species, or how urbanized its site is, change how likely it is to perform a given foraging behavior?** The results were presented at the Entomological Society of America (ESA) meeting.
+
+- **Data:** camcorder ethogram observations (one row per observed behavior event, tagged with a bee ID) plus site GIS data
+- **Urbanization measure:** percent impervious surface within a 500 m buffer around each site
+- **Methods:** binary behavior indicators per bee, logistic regression and a binomial mixed-effects model, scatter and mosaic plots
 
 ---
 
 ## Data
 
-Four CSVs (not included in repo — update file paths in each script):
+The four input CSVs are **not included** in the repo. Each script reads them from a hard-coded path under `~/Documents/Ecology /...`, so update the `read.csv()` lines at the top of a script before running it.
 
 | File | Contents |
 |------|----------|
-| `Behavior 2022 (bees only).csv` | Camcorder ethogram observations, 2022 |
-| `Behavior 2023 (bees).csv` | Camcorder ethogram observations, 2023 |
-| `Behavior 2024 (bees).csv` | Camcorder ethogram observations, 2024 |
-| `Orchards_GISdata_October_2023 - Site information.csv` | Site-level GIS data, impervious surface coverage |
+| `Camcorder Ethogram Behavior Metadata - Behavior 2022 (bees only).csv` | 2022 observations |
+| `Camcorder Ethogram Behavior Metadata - Behavior 2023 (bees).csv` | 2023 observations |
+| `Camcorder Ethogram Behavior Metadata - Behavior 2024 (bees).csv` | 2024 observations |
+| `Orchards_GISdata_October_2023 (USE THIS) - Site information.csv` | Site names, `URBAN_IMPERVIOUS_500m`, `BuffSize_500` |
 
-**Bee species tracked:** *Apis mellifera*, *Osmia*, *Andrena*, other
-**Behaviors tracked:** scraping, tapping, rubbing face/body, anther contact, head frontal/side PER, pollinator combo, and more
-**Sites:** 15 community orchards/gardens across St. Louis (Holy Cross, SLU, EarthDance, Thies Farm, etc.)
+**Species:** *Apis mellifera* (honey bee), *Osmia*, *Andrena*. *Ptilothrix bombiformis*, *Colletes*, and *Lasioglossum* are grouped as "other" and dropped from the models. *Osmia* is only analyzed for 2024.
+
+**Behaviors modeled:** scraping, tapping, interaction, rubbing body, rubbing face, anther contact, head frontal PER, head side PER, body side PER, pollinator combo. (PER = proboscis extension response.)
+
+**Sites (15):** Holy Cross, COLA, Rustic Roots, EarthDance, Ferguson, Emmanuel, Kellogg, HOLS, Florissant, SLU, McKinley, 13th Street, Virginia, Carondelet, Thies Farm.
 
 ---
 
 ## How it's done
 
-1. **Load & standardize** each year's ethogram CSV with `janitor::clean_names()`, tag each with its `Year`, and join to the site-level GIS file.
-2. **Compute urbanization**: `ImperviousPercent = URBAN_IMPERVIOUS_500m / BuffSize_500 * 100` per site, joined onto every observation by location.
-3. **Recode** raw site names (multiple historical spellings per orchard) to canonical short names via `dplyr::case_when()`.
-4. **Convert each behavior to a binary indicator** per bee (did/didn't perform it), the response variable for every model.
-5. **Model** each behavior's probability as a function of species and urbanization (impervious %), with location (and, when pooling years, year) as a random effect.
-6. **Test significance** with Type III Chi-square ANOVA on the fitted model.
-7. **Visualize**: bar/scatter plots of behavior rates by species/site/year, and mosaic plots showing the proportion of each species performing key behaviors.
+Every script shares the same data-prep block:
+
+1. **Load** the three yearly ethogram files, standardize column names with `janitor::clean_names()`, and add a `Year` column to each.
+2. **Compute urbanization** per site: `ImperviousPercent = URBAN_IMPERVIOUS_500m / BuffSize_500 × 100`.
+3. **Fix site names** in both sources with `case_when()` (for example, "House of Living Stone" and "HLS" both become `HOLS`) so they join cleanly.
+4. **Stack and clean** the years with `bind_rows()`, lowercase and trim the species and behavior text, and drop rows with no species or behavior.
+5. **Build a complete bee × behavior grid.** Count each behavior per bee, then `cross_join` every bee against every behavior and fill the missing combinations with 0. The result is a 0/1 outcome `Y.N` for every bee and every behavior, so bees that *didn't* perform a behavior are counted too.
+6. **Join** each bee to its site's `ImperviousPercent`.
+7. **Model** each behavior (see below) and print the test statistic and p-value.
+8. **Plot** the results.
 
 ## Scripts
 
-### `BeeVisuals - Final.R`
-Main visualization script. Merges all three years, computes per-bee binary behavior indicators, calculates impervious-surface proportion per site, and produces bar/scatter plots of behavior rates by species, site, and year. Pulls in statistical test results from `ByYear`.
-
 ### `ByYear - final.R`
-Runs a separate model per year. For each behavior, fits a GLMM (`lme4::glmer`, binomial family) with impervious surface % and species as fixed-effect predictors and location as a random intercept (`(1 | location)`).
+For each behavior and each year separately, fits a **logistic regression** (`glm`, binomial) of `Y.N ~ species * ImperviousPercent` and prints the model summary plus a Chi-square analysis-of-deviance table. The interaction term tests whether urbanization affects the species differently.
 
 ### `RandomEffectYear - Final.R`
-Same model structure as `ByYear`, but pools all three years and adds year as a second random effect (`(1 | Year)`). Runs Chi-square ANOVA (`car::Anova`, Type III) on the pooled model to test the species × impervious-surface interaction across years.
+Pools all three years into one model per behavior: a **binomial GLMM** (`lme4::glmer`) of `Y.N ~ species * ImperviousPercent + (1 | Year)`, with a random intercept for year. Significance comes from a Type III Chi-square test (`car::Anova`).
+
+### `BeeVisuals - Final.R`
+For scraping, head side PER, and anther contact, computes the **proportion of bees at each site that performed the behavior** and plots it against impervious-surface proportion, colored by species, with regression lines on selected year/species combinations. Each plot is annotated with the per-year χ² and p-values from `ByYear` (hard-coded into the script) plus significance stars.
 
 ### `Bee individual analysis - Final mosaic plot.R`
-Fits per-behavior logistic regressions with species as the predictor and produces mosaic plots (`ggmosaic`) showing the proportion of each species performing key behaviors (anther contact, rubbing face, head frontal PER, pollinator combo).
+Fits a species-only logistic regression per behavior, then draws **mosaic plots** (`ggmosaic`) of the yes/no share by species for rubbing face, anther contact, head frontal PER, and pollinator combo.
 
-## Code & libraries used
+## The models
 
-`lme4`, `car`, `ggplot2`, `ggmosaic`, `dplyr`, `tidyverse`, `janitor`, `readr`, `stringr`, `gridExtra`, `pbkrtest`.
+- **Logistic regression** (`ByYear`, mosaic script): models the log-odds that a bee performs a behavior. The per-year version includes species, impervious %, and their interaction.
+- **Binomial generalized linear mixed model** (`RandomEffectYear`): the same fixed effects, plus a random intercept per year. That absorbs year-to-year differences in baseline behavior rates, so all three seasons can be analyzed together without treating year as a predictor of interest.
 
-## The algorithm
+## Built with
 
-**Generalized linear mixed-effects models** (binomial GLMMs via `glmer`): each tracked behavior is a 0/1 outcome per observed bee. The model estimates fixed effects for bee species and site urbanization (% impervious surface within a 500m buffer) on the log-odds of performing that behavior, while a **random intercept per site** (and, in the pooled version, per year) absorbs site-to-site and year-to-year variation that isn't explained by the fixed effects — this is what makes it a *mixed* model rather than plain logistic regression. Significance of each predictor (and the species × urbanization interaction) is then assessed with a **Type III Chi-square ANOVA** on the fitted model.
+R: `tidyverse` (`dplyr`, `readr`, `stringr`, `ggplot2`), `janitor`, `lme4`, `car`, `pbkrtest`, `ggmosaic`, `gridExtra`, `rlang`.
+
+## License
+
+BSD 3-Clause. See [`LICENSE`](LICENSE).
