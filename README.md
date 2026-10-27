@@ -5,7 +5,7 @@
 Part of a USDA-funded urban ecology project in St. Louis. I wanted to know whether a bee's
 species, or how urbanized its site is, changes how likely it is to perform a given foraging
 behavior on flowers, using camcorder observations from 15 community orchards and gardens
-over 2022 to 2024. The results were presented at the Entomological Society of America (ESA)
+over 2022 to 2024. The results were presented at the Ecological Society of America (ESA)
 meeting.
 
 ## What I achieved
